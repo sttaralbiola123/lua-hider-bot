@@ -7,7 +7,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 });
 
-const scriptCache = new Map(); // messageId => { id, loadstring }
+const scriptCache = new Map(); // messageId => { id, loadstring, url }
 
 const API_URL = 'https://lua-hider.onrender.com/api/v1/upload';
 const API_KEY = 'sttaralbiola';
@@ -77,6 +77,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         scriptCache.set(message.id, {
           id: data.id,
           loadstring: data.loadstring,
+          url: data.url,
         });
       } else {
         const errorEmbed = new EmbedBuilder()
@@ -88,10 +89,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.editReply({ embeds: [errorEmbed] });
       }
     } catch (err) {
-      console.error(err);
+      console.error('Upload error:', err);
       const errorEmbed = new EmbedBuilder()
         .setTitle('❌ Upload Failed')
-        .setDescription('Failed to connect to LuaBin API.')
+        .setDescription('Failed to connect to LuaBin API. Please try again later.')
         .setColor(0xed4245);
       await interaction.editReply({ embeds: [errorEmbed] });
     }
@@ -103,7 +104,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const data = scriptCache.get(messageId);
 
     if (!data) {
-      return interaction.reply({ content: 'This script data has expired.', ephemeral: true });
+      return interaction.reply({ content: '❌ This script data has expired. Please upload again.', ephemeral: true });
     }
 
     if (interaction.customId === 'copy_loadstring') {
@@ -115,7 +116,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     else if (interaction.customId === 'delete_script') {
       try {
-        const deleteUrl = `https://lua-hider.onrender.com/api/v1/script/\( {data.id}?api_key= \){API_KEY}`;
+        // FIXED: Correct URL syntax
+        const deleteUrl = `https://lua-hider.onrender.com/api/v1/script/${data.id}?api_key=${API_KEY}`;
         
         const res = await fetch(deleteUrl, { method: 'DELETE' });
         const result = await res.json();
@@ -123,12 +125,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (result.success) {
           await interaction.reply({ content: '✅ Script deleted successfully!', ephemeral: true });
           scriptCache.delete(messageId);
+          
+          // Update the original embed to show it's deleted
+          const deletedEmbed = new EmbedBuilder()
+            .setTitle('🗑️ Script Deleted')
+            .setDescription('This script has been deleted from LuaBin.')
+            .setColor(0xed4245)
+            .setFooter({ text: 'Deleted by user' });
+          
+          await interaction.message.edit({ embeds: [deletedEmbed], components: [] });
         } else {
-          await interaction.reply({ content: `❌ Failed to delete: ${result.error}`, ephemeral: true });
+          await interaction.reply({ content: `❌ Failed to delete: ${result.error || 'Unknown error'}`, ephemeral: true });
         }
       } catch (err) {
-        console.error(err);
-        await interaction.reply({ content: '❌ Error contacting delete API.', ephemeral: true });
+        console.error('Delete error:', err);
+        await interaction.reply({ content: '❌ Error contacting delete API. Please try again.', ephemeral: true });
       }
     }
   }
